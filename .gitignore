@@ -1,0 +1,15 @@
+node_modules/
+
+# O banco e dado do usuario, nao codigo.
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/backups/
+
+
+.env
+*.zip
+npm-debug.log*
+.DS_Store
+Thumbs.db
+backups/*.db

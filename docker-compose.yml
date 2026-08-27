@@ -1,0 +1,103 @@
+# Publicacao do Controle Financeiro num servidor, atras do Tailscale.
+#
+# A IDEIA CENTRAL: o app NAO abre nenhuma porta no servidor.
+#
+# Note que o servico `app` nao tem `ports:`. Ele compartilha a pilha de rede do
+# container do Tailscale (`network_mode: service:tailscale`), e quem atende o
+# celular e o proprio Tailscale, com HTTPS, dentro da sua rede privada.
+# Resultado: nao existe endereco publico para alguem descobrir ou varrer. Nem
+# o firewall do servidor precisa liberar a porta 3000.
+#
+# Isto e o que substitui o login que o app nao tem.
+#
+# Antes de subir:
+#   1. No admin do Tailscale, ative MagicDNS e HTTPS Certificates.
+#   2. Gere uma auth key (Settings -> Keys -> Generate auth key).
+#      Marque "Reusable" se for subir mais de uma vez.
+#   3. Copie .env.deploy.example para .env e cole a chave em TS_AUTHKEY.
+#
+# Depois:  docker compose up -d
+# Acesse:  https://financeiro.<sua-tailnet>.ts.net
+
+services:
+  tailscale:
+    image: tailscale/tailscale:latest
+    container_name: financeiro-tailscale
+    hostname: financeiro # vira o nome na rede: financeiro.<tailnet>.ts.net
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY:?defina TS_AUTHKEY no arquivo .env}
+      # O estado precisa persistir, senao cada reinicio pede autenticacao nova
+      # e consome uma auth key.
+      TS_STATE_DIR: /var/lib/tailscale
+      # Declara o proxy HTTPS para o app (ver deploy/serve.json).
+      TS_SERVE_CONFIG: /config/serve.json
+      # Modo kernel: mais rapido que userspace. Exige /dev/net/tun e NET_ADMIN.
+      TS_USERSPACE: "false"
+      TS_EXTRA_ARGS: --accept-dns=false
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+      - ./deploy/serve.json:/config/serve.json:ro
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - net_admin
+      - sys_module
+    restart: unless-stopped
+
+  app:
+    build: .
+    # Nome explicito para o servico de backup reaproveitar a MESMA imagem, em
+    # vez de o compose construi-la duas vezes.
+    image: controle-financeiro:local
+    container_name: financeiro-app
+    # Compartilha a rede do Tailscale. Consequencia: o app escuta em
+    # 127.0.0.1:3000 DENTRO daquele namespace, alcancavel apenas pelo proxy do
+    # Tailscale. Nao ha porta publicada no host.
+    network_mode: service:tailscale
+    environment:
+      # A barreira de acesso e a rede privada do Tailscale: silencia o aviso.
+      ACESSO_PROTEGIDO: "1"
+      # O proxy do Tailscale fica na frente.
+      TRUST_PROXY: "1"
+      HOST: 127.0.0.1
+      PORT: "3000"
+      DB_PATH: /data/financeiro.db
+    volumes:
+      # O banco e um ARQUIVO. Sem este volume, cada deploy apaga tudo.
+      - dados:/data
+      # Destino dos backups automaticos, para dar `docker cp` de fora.
+      - ./backups:/backups
+    restart: unless-stopped
+    depends_on:
+      tailscale:
+        condition: service_started
+
+  # Backup a cada 24h em ./backups no servidor, usando VACUUM INTO — copia
+  # consistente mesmo com o app gravando. O script mantem os 30 mais recentes.
+  #
+  # Laco simples de 24h em vez de "esperar dar 3h da manha": comparar a hora a
+  # cada minuto perde a janela se o container estiver ocupado naquele instante,
+  # e um backup 20 minutos deslocado nao faz diferenca nenhuma.
+  backup:
+    image: controle-financeiro:local
+    container_name: financeiro-backup
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        sleep 30
+        while true; do
+          node --disable-warning=ExperimentalWarning scripts/backup.js /backups || true
+          sleep 86400
+        done
+    environment:
+      DB_PATH: /data/financeiro.db
+    volumes:
+      - dados:/data
+      - ./backups:/backups
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_started
+
+volumes:
+  dados:
+  tailscale-state:

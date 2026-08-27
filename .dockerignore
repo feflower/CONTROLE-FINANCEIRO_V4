@@ -1,0 +1,14 @@
+# O que NAO entra na imagem.
+#
+# `public/icons` NAO esta aqui de proposito: os icones sao arquivos do projeto
+# e precisam chegar na imagem. Excluir e depois gerar no build criava uma
+# dependencia do diretorio scripts/ e ja quebrou um deploy.
+
+node_modules
+data
+backups
+.git
+.github
+*.zip
+npm-debug.log*
+.env

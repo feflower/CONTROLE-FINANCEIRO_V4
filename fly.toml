@@ -1,59 +1,43 @@
-# Configuracao do Fly.io.
+# fly.toml app configuration file generated for controle-financeiro-v4 on 2026-08-27T20:39:49Z
 #
-# Troque `app` por um nome livre; ele define a URL:
-#   https://SEU-NOME.fly.dev
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
-# Antes do primeiro deploy, leia DEPLOY-FLY.md. Dois pontos nao negociaveis:
-#   1. criar o volume (o banco e um arquivo — sem volume, os lancamentos
-#      desaparecem a cada deploy);
-#   2. definir a senha (`fly secrets set SENHA_ACESSO=...`), porque a URL
-#      .fly.dev e publica.
 
-app = "controle-financeiro"
-primary_region = "gru" # gru = Sao Paulo. `fly platform regions` lista as demais.
+app = 'controle-financeiro-v4'
+primary_region = 'gru'
 
 [build]
-  dockerfile = "Dockerfile"
+  dockerfile = 'Dockerfile'
 
 [env]
-  PORT = "3000"
-  HOST = "0.0.0.0"
-  DB_PATH = "/data/financeiro.db"
-  # O proxy do Fly fica na frente: sem isto o IP real nao chega, e o limite de
-  # tentativas de senha veria todo mundo como o mesmo cliente.
-  TRUST_PROXY = "1"
+  DB_PATH = '/data/financeiro.db'
+  HOST = '0.0.0.0'
+  PORT = '3000'
+  TRUST_PROXY = '1'
 
-# O banco vive aqui. `fly volumes create dados --size 1 --region gru`
 [[mounts]]
-  source = "dados"
-  destination = "/data"
+  source = 'dados'
+  destination = '/data'
 
 [http_service]
-  internal_port = 3000
+  internal_port = 8080
   force_https = true
-
-  # SQLite e um arquivo: DUAS maquinas escrevendo no mesmo volume corrompem o
-  # banco. Por isso uma so, e sem escala automatica.
-  auto_stop_machines = "suspend"
+  auto_stop_machines = 'suspend'
   auto_start_machines = true
   min_machines_running = 0
 
   [http_service.concurrency]
-    type = "requests"
-    soft_limit = 50
+    type = 'requests'
     hard_limit = 100
+    soft_limit = 50
 
-  # Suspender em vez de parar mantem a memoria: o app volta em ~1 segundo
-  # quando voce abre no celular, em vez de reiniciar do zero.
   [[http_service.checks]]
-    interval = "30s"
-    timeout = "5s"
-    grace_period = "10s"
-    method = "GET"
-    path = "/api/health"
+    interval = '30s'
+    timeout = '5s'
+    grace_period = '10s'
+    method = 'GET'
+    path = '/api/health'
 
-# A menor maquina da conta: o app responde o painel em ~4 ms com 700
-# lancamentos. Nao precisa de mais.
 [[vm]]
-  size = "shared-cpu-1x"
-  memory = "512mb"
+  size = 'shared-cpu-1x'
+  memory = '512mb'
